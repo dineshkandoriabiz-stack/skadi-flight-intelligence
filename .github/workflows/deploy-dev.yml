@@ -35,17 +35,18 @@ jobs:
           aws-region: ap-southeast-2
 
       - name: Terraform Init
-        run: terraform  -chdir=terraform/dev init -upgrade
+        # Removed -chdir
+        run: terraform init -upgrade
 
       - name: Terraform Format Check
-        run: terraform  -chdir=terraform/dev fmt -check
-        continue-on-error: true # Doesn't break the build, just warns you
+        # Removed -chdir
+        run: terraform fmt -check
+        continue-on-error: true
 
       - name: Terraform Plan
         id: plan
         run: terraform plan -no-color
 
       - name: Terraform Apply
-        # Only apply automatically if this is a push, not just a PR
         if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
         run: terraform apply -auto-approve
