@@ -35,10 +35,10 @@ jobs:
           aws-region: ap-southeast-2
 
       - name: Terraform Init
-        run: terraform -chdir=terraform/dev init -upgrade
+        run: terraform  -chdir=terraform/dev init -upgrade
 
       - name: Terraform Format Check
-        run: terraform fmt -check
+        run: terraform  -chdir=terraform/dev fmt -check
         continue-on-error: true # Doesn't break the build, just warns you
 
       - name: Terraform Plan
