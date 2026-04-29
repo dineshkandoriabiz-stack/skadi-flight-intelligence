@@ -1,6 +1,5 @@
 terraform {
   backend "s3" {
-    # 1. Put the NEW memory bucket name here
     bucket = "skadi-tf-state-a00475fc" 
     key    = "skadi/dev/terraform.tfstate"
     region = "ap-southeast-2"
@@ -13,6 +12,11 @@ provider "aws" {
 
 module "dev_infra" {
   source      = "../modules/telemetry_pipe"
-  # 2. Put your EXISTING Data Lake bucket name here
   bucket_name = "lat-skadi-lake-dev-a00475fc" 
+}
+
+# Adopt the manually created Data Lake
+import {
+  to = module.dev_infra.aws_s3_bucket.data_lake
+  id = "lat-skadi-lake-dev-a00475fc"
 }
