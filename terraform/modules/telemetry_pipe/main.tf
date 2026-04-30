@@ -80,7 +80,7 @@ resource "aws_lambda_function" "telemetry_transformer" {
   memory_size      = 256
 
   # Attach the official AWS Data Wrangler (Pandas) Layer so we don't have to bundle the heavy library
-  layers = ["arn:aws:lambda:ap-southeast-2:336392520046:layer:AWSSDKPandas-Python311:12"]
+  layers = ["arn:aws:lambda:ap-southeast-2:336392948345:layer:AWSSDKPandas-Python311:22"]
 }
 
 # 5. S3 Bucket Notification: Tell S3 to trigger the Lambda when a JSON file lands in the bronze folder
