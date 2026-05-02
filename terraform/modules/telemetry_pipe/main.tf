@@ -108,4 +108,70 @@ resource "aws_lambda_permission" "allow_s3" {
   function_name = aws_lambda_function.telemetry_transformer.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.data_lake.arn
+
+# ==========================================
+# PHASE 5: ATHENA & GLUE ANALYTICS GATEWAY
+# ==========================================
+
+# 1. Create a folder in S3 to store Athena query results
+resource "aws_s3_object" "athena_results_folder" {
+  bucket = aws_s3_bucket.data_lake.id
+  key    = "athena-results/"
+}
+
+# 2. Create the Glue Data Catalog Database
+resource "aws_glue_catalog_database" "skadi_db" {
+  name = "skadi_flight_intelligence"
+}
+
+# 3. Create the Glue Table (Mapping S3 Parquet to SQL)
+resource "aws_glue_catalog_table" "silver_telemetry" {
+  name          = "silver_telemetry"
+  database_name = aws_glue_catalog_database.skadi_db.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    "classification" = "parquet"
+  }
+
+  storage_descriptor {
+    # Point this exactly at your Silver layer
+    location      = "s3://${aws_s3_bucket.data_lake.id}/silver/telemetry/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      name                  = "parquet-stream"
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      parameters = {
+        "serialization.format" = 1
+      }
+    }
+
+    # Define the schema. (Update these names if your producer uses different JSON keys)
+    columns {
+      name = "flight_id"
+      type = "string"
+    }
+    columns {
+      name = "altitude_ft"
+      type = "int"
+    }
+    columns {
+      name = "latitude"
+      type = "double"
+    }
+    columns {
+      name = "longitude"
+      type = "double"
+    }
+    columns {
+      name = "timestamp"
+      type = "string"
+    }
+    columns {
+      name = "processed_at" # The timestamp we added in the Lambda function!
+      type = "timestamp"
+    }
+  }
 }
