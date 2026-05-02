@@ -108,7 +108,7 @@ resource "aws_lambda_permission" "allow_s3" {
   function_name = aws_lambda_function.telemetry_transformer.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.data_lake.arn
-
+}
 # ==========================================
 # PHASE 5: ATHENA & GLUE ANALYTICS GATEWAY
 # ==========================================
