@@ -1,45 +1,68 @@
+import json
 import urllib.parse
-import awswrangler as wr
+import boto3
+import os
 import pandas as pd
-import logging
+import awswrangler as wr
+from datetime import datetime, timezone
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+s3_client = boto3.client('s3')
 
 def lambda_handler(event, context):
-    # 1. Extract the bucket name and file key from the S3 event trigger
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
-    
-    logger.info(f"Processing new telemetry batch: s3://{bucket}/{key}")
-
     try:
-        # 2. Read the raw JSON array from the Bronze layer into a Pandas DataFrame
-        df = wr.s3.read_json(path=f"s3://{bucket}/{key}")
+        # 1. Extract the S3 Bucket and File Key from the trigger event
+        source_bucket = event['Records'][0]['s3']['bucket']['name']
+        key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
         
-        # 3. Schema Enforcement & Data Cleaning 
-        # Ensure altitude is always treated as a numeric value, handle missing data
-        if 'altitude_ft' in df.columns:
-            df['altitude_ft'] = pd.to_numeric(df['altitude_ft'], errors='coerce').fillna(0).astype(int)
+        print(f"📥 Processing incoming batch: s3://{source_bucket}/{key}")
+
+        # 2. Download and read the raw JSON file from the Bronze layer
+        response = s3_client.get_object(Bucket=source_bucket, Key=key)
+        file_content = response['Body'].read().decode('utf-8')
         
-        # Add a processing timestamp for auditing
-        df['processed_at'] = pd.Timestamp.utcnow()
+        # Handle the JSON batch (Depending on your consumer, it's a JSON array or newline-delimited)
+        try:
+            data = json.loads(file_content)
+        except json.JSONDecodeError:
+            data = [json.loads(line) for line in file_content.strip().split('\n')]
 
-        # 4. Define the Silver layer destination
-        # We replace 'bronze' with 'silver' and change the extension to .parquet
-        silver_key = key.replace('bronze/', 'silver/').replace('.json', '.parquet')
-        silver_path = f"s3://{bucket}/{silver_key}"
+        # 3. Convert to a Pandas DataFrame
+        df = pd.DataFrame(data)
 
-        # 5. Write the cleaned DataFrame to the Silver layer as a compressed Parquet file
+        # 4. Enforce Schema & Data Types (Data Quality Check)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['altitude_ft'] = df['altitude_ft'].astype(int)
+        df['latitude'] = df['latitude'].astype(float)
+        df['longitude'] = df['longitude'].astype(float)
+        df['flight_id'] = df['flight_id'].astype(str)
+
+        # 5. V2 UPGRADE: Calculate dynamic Hive partitions based on UTC time
+        now = datetime.now(timezone.utc)
+        year_str = now.strftime('%Y')
+        month_str = now.strftime('%m')
+        day_str = now.strftime('%d')
+
+        # Construct the Hive-style S3 URI (e.g. year=2026/month=05/day=12/)
+        partition_path = f"s3://{source_bucket}/silver/telemetry/year={year_str}/month={month_str}/day={day_str}/"
+        
+        print(f"🔀 Routing compressed Parquet file to: {partition_path}")
+
+        # 6. Write to the Silver Layer using AWS Data Wrangler
         wr.s3.to_parquet(
             df=df,
-            path=silver_path,
-            dataset=False # Set to True later if we want to partition by date
+            path=partition_path,
+            dataset=True,           # CRITICAL: Tells Wrangler to respect folder structures
+            mode="append",          # Safely add to the folder without overwriting
+            database="skadi_flight_intelligence", 
+            table="silver_telemetry"              
         )
         
-        logger.info(f"Successfully transformed and saved to: {silver_path}")
-        return {'statusCode': 200, 'body': 'Transformation complete'}
+        print("✅ SUCCESS: Telemetry batch partitioned and registered in Glue.")
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Medallion architecture processing complete')
+        }
 
     except Exception as e:
-        logger.error(f"Error processing object {key} from bucket {bucket}. Error: {str(e)}")
+        print(f"❌ ERROR processing object {key} from bucket {source_bucket}. Exception: {e}")
         raise e
