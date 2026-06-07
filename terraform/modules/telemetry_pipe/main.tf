@@ -33,7 +33,7 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
-# 2. IAM Policy: Give Lambda permission to read/write to your Data Lake and log to CloudWatch
+# 2. IAM Policy: Give Lambda permission to S3, CloudWatch, and the Glue Catalog
 resource "aws_iam_role_policy" "lambda_s3_policy" {
   name = "skadi_s3_read_write"
   role = aws_iam_role.lambda_exec.id
@@ -61,6 +61,20 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
         ]
         Effect   = "Allow"
         Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        # V2 UPGRADE: Allow Lambda to read/write to the Glue Data Catalog
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:UpdateTable",
+          "glue:CreateTable",
+          "glue:GetPartitions",
+          "glue:BatchCreatePartition",
+          "glue:CreatePartition"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
       }
     ]
   })
