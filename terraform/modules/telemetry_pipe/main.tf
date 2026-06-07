@@ -16,6 +16,7 @@ resource "aws_s3_bucket" "data_lake" {
     Layer       = "Data Lake"
   }
 }
+
 # 1. IAM Role: Give Lambda permission to assume a role
 resource "aws_iam_role" "lambda_exec" {
   name = "skadi_telemetry_transformer_role"
@@ -109,6 +110,7 @@ resource "aws_lambda_permission" "allow_s3" {
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.data_lake.arn
 }
+
 # ==========================================
 # PHASE 5: ATHENA & GLUE ANALYTICS GATEWAY
 # ==========================================
@@ -130,8 +132,38 @@ resource "aws_glue_catalog_table" "silver_telemetry" {
   database_name = aws_glue_catalog_database.skadi_db.name
   table_type    = "EXTERNAL_TABLE"
 
+  # V2 UPGRADE: Physical Partition Keys
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+  partition_keys {
+    name = "month"
+    type = "string"
+  }
+  partition_keys {
+    name = "day"
+    type = "string"
+  }
+
+  # V2 UPGRADE: Athena Partition Projection Map
   parameters = {
-    "classification" = "parquet"
+    "classification"                    = "parquet"
+    "projection.enabled"                = "true"
+    
+    "projection.year.type"              = "integer"
+    "projection.year.range"             = "2024,2030"
+    
+    "projection.month.type"             = "integer"
+    "projection.month.range"            = "1,12"
+    "projection.month.digits"           = "2"
+    
+    "projection.day.type"               = "integer"
+    "projection.day.range"              = "1,31"
+    "projection.day.digits"             = "2"
+    
+    # Mathematical Map (Note the double $$ to escape Terraform's interpolation)
+    "storage.location.template"         = "s3://${aws_s3_bucket.data_lake.id}/silver/telemetry/year=$${year}/month=$${month}/day=$${day}/"
   }
 
   storage_descriptor {
@@ -148,7 +180,7 @@ resource "aws_glue_catalog_table" "silver_telemetry" {
       }
     }
 
-    # Define the schema. (Update these names if your producer uses different JSON keys)
+    # Define the schema.
     columns {
       name = "flight_id"
       type = "string"
@@ -170,7 +202,7 @@ resource "aws_glue_catalog_table" "silver_telemetry" {
       type = "string"
     }
     columns {
-      name = "processed_at" # The timestamp we added in the Lambda function!
+      name = "processed_at"
       type = "timestamp"
     }
   }
