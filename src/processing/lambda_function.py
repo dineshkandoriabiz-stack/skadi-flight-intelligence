@@ -1,7 +1,6 @@
 import json
 import urllib.parse
 import boto3
-import os
 import pandas as pd
 import awswrangler as wr
 from datetime import datetime, timezone
@@ -36,28 +35,24 @@ def lambda_handler(event, context):
         df['longitude'] = df['longitude'].astype(float)
         df['flight_id'] = df['flight_id'].astype(str)
 
-        # 5. V2 UPGRADE: Calculate dynamic Hive partitions based on UTC time
+        # 5. V2 UPGRADE: Add UTC partition columns explicitly to the DataFrame
         now = datetime.now(timezone.utc)
-        year_str = now.strftime('%Y')
-        month_str = now.strftime('%m')
-        day_str = now.strftime('%d')
-
-        # Construct the Hive-style S3 URI (e.g. year=2026/month=05/day=12/)
-        partition_path = f"s3://{source_bucket}/silver/telemetry/year={year_str}/month={month_str}/day={day_str}/"
+        df['year'] = now.strftime('%Y')
+        df['month'] = now.strftime('%m')
+        df['day'] = now.strftime('%d')
         
-        print(f"🔀 Routing compressed Parquet file to: {partition_path}")
+        print("🔀 Routing compressed Parquet file to Silver layer...")
 
         # 6. Write to the Silver Layer using AWS Data Wrangler
-       # 6. Write to the Silver Layer using AWS Data Wrangler
-      wr.s3.to_parquet(
-    df=df,
-    path="s3://lat-skadi-lake-dev-a00475fc/silver/telemetry/",  # Base root directory
-    dataset=True,                                               # Respects folder structures
-    mode="append",                                              # Safely add files
-    database="skadi_flight_intelligence",
-    table="silver_telemetry",
-    partition_cols=["year", "month", "day"]                    # Let Wrangler automatically build the folders
-     )
+        wr.s3.to_parquet(
+            df=df,
+            path="s3://lat-skadi-lake-dev-a00475fc/silver/telemetry/",  
+            dataset=True,                                               
+            mode="append",                                              
+            database="skadi_flight_intelligence",
+            table="silver_telemetry",
+            partition_cols=["year", "month", "day"]                    
+        )
         
         print("✅ SUCCESS: Telemetry batch partitioned and registered in Glue.")
         return {
