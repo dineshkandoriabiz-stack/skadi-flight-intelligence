@@ -48,14 +48,16 @@ def lambda_handler(event, context):
         print(f"🔀 Routing compressed Parquet file to: {partition_path}")
 
         # 6. Write to the Silver Layer using AWS Data Wrangler
-        wr.s3.to_parquet(
-            df=df,
-            path=partition_path,
-            dataset=True,           # CRITICAL: Tells Wrangler to respect folder structures
-            mode="append",          # Safely add to the folder without overwriting
-            database="skadi_flight_intelligence", 
-            table="silver_telemetry"              
-        )
+       # 6. Write to the Silver Layer using AWS Data Wrangler
+      wr.s3.to_parquet(
+    df=df,
+    path="s3://lat-skadi-lake-dev-a00475fc/silver/telemetry/",  # Base root directory
+    dataset=True,                                               # Respects folder structures
+    mode="append",                                              # Safely add files
+    database="skadi_flight_intelligence",
+    table="silver_telemetry",
+    partition_cols=["year", "month", "day"]                    # Let Wrangler automatically build the folders
+     )
         
         print("✅ SUCCESS: Telemetry batch partitioned and registered in Glue.")
         return {
